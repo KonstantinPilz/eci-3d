@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECI 3D Explorer — capability × training compute × time</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root { --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; --accent:#0d6e6e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         color:var(--text); background:#fff; display:flex; flex-direction:column; height:100vh; }
+  header { padding:14px 22px 8px; border-bottom:1px solid var(--border); }
+  h1 { margin:0 0 2px; font-size:19px; font-weight:650; }
+  .sub { color:var(--muted); font-size:13px; margin:0; }
+  .controls { display:flex; flex-wrap:wrap; gap:18px; align-items:center; padding:10px 22px;
+              border-bottom:1px solid var(--border); font-size:13px; }
+  .controls label { color:var(--muted); margin-right:6px; }
+  select { font-size:13px; padding:3px 6px; border:1px solid var(--border); border-radius:5px; background:#fff; color:var(--text); }
+  #count { color:var(--muted); margin-left:auto; }
+  #plot { flex:1; min-height:0; }
+  footer { padding:8px 22px; border-top:1px solid var(--border); font-size:12px; color:var(--muted); }
+  footer a { color:var(--accent); text-decoration:none; }
+  footer a:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Epoch Capabilities Index — 3D explorer</h1>
+  <p class="sub">Each point is a model version: release date &times; training compute &times; capability score.
+     Drag to rotate, scroll to zoom, click legend entries to hide groups.</p>
+</header>
+<div class="controls">
+  <span><label for="zmode">Score (z-axis)</label>
+    <select id="zmode"><option value="__eci__">ECI (overall)</option></select></span>
+  <span><label for="colorby">Color by</label>
+    <select id="colorby"><option value="org">Organization</option><option value="country">Country</option></select></span>
+  <span><label for="ci">ECI 90% CI bars</label>
+    <input type="checkbox" id="ci"></span>
+  <span id="count"></span>
+</div>
+<div id="plot"></div>
+<footer>
+  Data: <a href="https://epoch.ai/eci" target="_blank" rel="noopener">Epoch AI, Epoch Capabilities Index</a> (CC-BY),
+  mirrored from <a href="https://epoch.ai/data/benchmarked_models.csv" target="_blank" rel="noopener">epoch.ai/data</a>.
+  Domain scores are the unweighted mean across that domain&rsquo;s benchmarks each model was evaluated on &mdash; a rough
+  summary, not Epoch&rsquo;s official domain analysis. Only models with a known training-compute estimate are shown.
+  Last data refresh: <span id="updated">&hellip;</span>. Updates daily via GitHub Actions.
+  <a href="https://github.com/KonstantinPilz/eci-3d" target="_blank" rel="noopener">Source</a>.
+</footer>
+<script>
+const PALETTE = ['#0d6e6e','#d97706','#7c3aed','#dc2626','#2563eb','#059669','#db2777','#854d0e','#4b5563','#0891b2'];
+
+let DATA = null;
+
+function log10ticks(vals) {
+  const lo = Math.floor(Math.min(...vals)), hi = Math.ceil(Math.max(...vals));
+  const tv = [], tt = [];
+  const sup = {'-':'⁻','0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'};
+  for (let e = lo; e <= hi; e++) { tv.push(e); tt.push('10' + String(e).split('').map(c => sup[c]).join('')); }
+  return {tv, tt};
+}
+
+function fmtCompute(c) {
+  const e = Math.floor(Math.log10(c));
+  return (c / 10 ** e).toFixed(1) + 'e' + e + ' FLOP';
+}
+
+function draw() {
+  const zmode = document.getElementById('zmode').value;
+  const colorby = document.getElementById('colorby').value;
+  const showCI = document.getElementById('ci').checked && zmode === '__eci__';
+
+  let models = DATA.models.filter(m => m.compute);
+  if (zmode !== '__eci__') models = models.filter(m => m.domains[zmode]);
+
+  // group for coloring: top groups by count, rest -> Other
+  const counts = {};
+  models.forEach(m => { const g = m[colorby]; counts[g] = (counts[g] || 0) + 1; });
+  const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, PALETTE.length - 1);
+  const groupOf = m => top.includes(m[colorby]) ? m[colorby] : 'Other';
+  const groups = [...top];
+  if (models.some(m => !top.includes(m[colorby]))) groups.push('Other');
+
+  const logC = models.map(m => Math.log10(m.compute));
+  const {tv, tt} = log10ticks(logC);
+
+  const traces = groups.map((g, i) => {
+    const pts = models.filter(m => groupOf(m) === g);
+    const z = pts.map(m => zmode === '__eci__' ? m.eci : m.domains[zmode].mean * 100);
+    const trace = {
+      type: 'scatter3d', mode: 'markers', name: `${g} (${pts.length})`,
+      x: pts.map(m => m.date),
+      y: pts.map(m => Math.log10(m.compute)),
+      z: z,
+      text: pts.map(m => {
+        let s = `<b>${m.name}</b><br>${m.org} · ${m.date}<br>Training compute: ${fmtCompute(m.compute)}` +
+                `<br>ECI: ${m.eci.toFixed(1)}`;
+        if (m.ci[0] != null) s += ` (${m.ci[0].toFixed(1)}–${m.ci[1].toFixed(1)})`;
+        if (zmode !== '__eci__') {
+          const d = m.domains[zmode];
+          s += `<br>${zmode}: ${(d.mean * 100).toFixed(1)}% (mean of ${d.n} benchmark${d.n > 1 ? 's' : ''})`;
+        }
+        return s;
+      }),
+      hovertemplate: '%{text}<extra></extra>',
+      marker: {size: 4.5, color: PALETTE[i % PALETTE.length], opacity: 0.85,
+               line: {width: 0.5, color: '#ffffff'}},
+    };
+    if (showCI) trace.error_z = {
+      type: 'data', symmetric: false,
+      array: pts.map(m => m.ci[1] != null ? m.ci[1] - m.eci : 0),
+      arrayminus: pts.map(m => m.ci[0] != null ? m.eci - m.ci[0] : 0),
+      color: PALETTE[i % PALETTE.length], thickness: 1.2, width: 0,
+    };
+    return trace;
+  });
+
+  const zTitle = zmode === '__eci__' ? 'ECI score' : zmode + ' (mean %, see footer)';
+  Plotly.react('plot', traces, {
+    margin: {l: 0, r: 0, t: 0, b: 0},
+    scene: {
+      xaxis: {title: 'Release date', type: 'date', gridcolor: '#e5e7eb'},
+      yaxis: {title: 'Training compute (FLOP)', tickvals: tv, ticktext: tt, gridcolor: '#e5e7eb'},
+      zaxis: {title: zTitle, gridcolor: '#e5e7eb'},
+      camera: {eye: {x: 1.8, y: -1.8, z: 0.5}},
+      aspectmode: 'cube',
+    },
+    legend: {x: 0.99, xanchor: 'right', y: 0.95, font: {size: 12}, itemsizing: 'constant'},
+    hoverlabel: {bgcolor: '#fff', bordercolor: '#d1d5db', font: {size: 12, color: '#1a1a2e'}},
+    paper_bgcolor: '#fff',
+  }, {responsive: true, displaylogo: false});
+
+  const total = DATA.models.length;
+  document.getElementById('count').textContent =
+    `${models.length} of ${total} scored models shown (those with known training compute` +
+    (zmode !== '__eci__' ? ` and ≥1 ${zmode} benchmark` : '') + ')';
+}
+
+fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
+  DATA = d;
+  document.getElementById('updated').textContent = d.updated;
+  const sel = document.getElementById('zmode');
+  d.domains.forEach(dom => {
+    const o = document.createElement('option');
+    o.value = dom; o.textContent = dom + ' (subset)';
+    sel.appendChild(o);
+  });
+  // match the Epoch link this was built from: preselect via ?subset=Software+engineering
+  const want = new URLSearchParams(location.search).get('subset');
+  if (want && d.domains.includes(want)) sel.value = want;
+  ['zmode', 'colorby', 'ci'].forEach(id => document.getElementById(id).addEventListener('change', draw));
+  draw();
+});
+</script>
+</body>
+</html>
