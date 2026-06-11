@@ -15,8 +15,12 @@ Data is Epoch AI's public CC-BY data (`benchmarked_models.csv`, `eci_benchmarks.
 [epoch.ai/data](https://epoch.ai/data)). Epoch's endpoints don't send CORS headers, so
 [`fetch_data.py`](fetch_data.py) (stdlib-only) mirrors and joins them into `docs/data.json`.
 
-A GitHub Actions workflow ([update-data.yml](.github/workflows/update-data.yml)) re-runs the fetch daily at
-06:23 UTC and commits `data.json` if it changed; GitHub Pages (serving `/docs` on `main`) redeploys automatically.
+A daily cron job on Konstantin's Oracle VM (06:23 ET, `~/projects/eci-3d/update.sh`) re-runs the fetch and pushes
+`docs/data.json` if it changed; GitHub Pages (serving `/docs` on `main`) redeploys automatically.
+
+(A GitHub Actions workflow for the same job exists locally in `.github/workflows/` but is untracked: the VM's gh
+OAuth token lacks the `workflow` scope to push it. To switch to Actions, run `gh auth refresh -s workflow`,
+commit the workflow, and remove the VM cron entry.)
 
 ## Local development
 
