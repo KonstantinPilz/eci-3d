@@ -44,8 +44,10 @@
     <select id="colorby"><option value="date">Release date</option><option value="org">Organization</option><option value="country">Country</option></select></span>
   <span><label for="min100">ECI &ge; 100 only</label>
     <input type="checkbox" id="min100" checked></span>
-  <span><label for="shadows">Shadows</label>
+  <span><label for="shadows">Shadows + stems</label>
     <input type="checkbox" id="shadows" checked></span>
+  <span><label for="spin">Spin</label>
+    <input type="checkbox" id="spin" checked></span>
   <span><label for="ci">ECI 90% CI bars</label>
     <input type="checkbox" id="ci"></span>
   <span id="count"></span>
@@ -118,6 +120,12 @@ function draw() {
   const logC = models.map(m => Math.log10(m.compute));
   const {tv, tt} = log10ticks(logC);
 
+  // fixed floor plane: stems and shadows anchor to it, making depth legible
+  const zAll = models.map(zOf);
+  const zMax = Math.max(...zAll);
+  const zFloor = (zmode === '__eci__' && min100) ? 100 : Math.floor(Math.min(...zAll)) - 1;
+  const zTop = zMax + (zMax - zFloor) * 0.05;
+
   let traces;
   if (colorby === 'date') {
     // continuous time shading: one trace, viridis colorbar with half-year ticks
@@ -171,15 +179,32 @@ function draw() {
   });
   }
 
+  if (shadows) {
+    // stems: invisible twin trace whose z error bars drop each point to the floor
+    const stems = {
+      type: 'scatter3d', mode: 'markers', showlegend: false, hoverinfo: 'skip',
+      x: models.map(m => m.date),
+      y: models.map(m => Math.log10(m.compute)),
+      z: zAll,
+      marker: {size: 0.1, color: 'rgba(0,0,0,0)'},
+      error_z: {type: 'data', symmetric: false,
+                array: models.map(() => 0),
+                arrayminus: zAll.map(v => v - zFloor),
+                color: 'rgba(100,116,139,0.5)', thickness: 2, width: 0},
+    };
+    traces.unshift(stems);
+  }
+
   const zTitle = zmode === '__eci__' ? 'ECI score' : zmode + ' (mean %, see footer)';
   Plotly.react('plot', traces, {
     margin: {l: 0, r: 0, t: 0, b: 0},
     scene: {
       xaxis: {title: 'Release date', type: 'date', gridcolor: '#e5e7eb'},
       yaxis: {title: 'Training compute (FLOP)', tickvals: tv, ticktext: tt, gridcolor: '#e5e7eb'},
-      zaxis: {title: zTitle, gridcolor: '#e5e7eb'},
+      zaxis: {title: zTitle, gridcolor: '#e5e7eb', range: [zFloor, zTop]},
       camera: {eye: {x: 1.8, y: -1.8, z: 0.5}},
       aspectmode: 'cube',
+      uirevision: 'keep',
     },
     legend: {x: 0.99, xanchor: 'right', y: 0.95, font: {size: 12}, itemsizing: 'constant'},
     hoverlabel: {bgcolor: '#fff', bordercolor: '#d1d5db', font: {size: 12, color: '#1a1a2e'}},
@@ -249,6 +274,28 @@ function drawFrontier() {
   }, {responsive: true, displaylogo: false});
 }
 
+// slow camera orbit for motion parallax; pauses while the cursor is over the plot
+function startSpin() {
+  const el = document.getElementById('plot');
+  let hover = false, last = null;
+  el.addEventListener('pointerenter', () => { hover = true; });
+  el.addEventListener('pointerleave', () => { hover = false; });
+  function tick(ts) {
+    requestAnimationFrame(tick);
+    const on = document.getElementById('spin').checked && !hover && el._fullLayout?.scene;
+    if (!on) { last = ts; return; }
+    if (last == null) { last = ts; return; }
+    const dt = ts - last;
+    if (dt < 33) return;
+    last = ts;
+    const e = el._fullLayout.scene.camera.eye;
+    const r = Math.hypot(e.x, e.y);
+    const a = Math.atan2(e.y, e.x) + 0.00010 * dt;   // ~1 orbit per minute
+    Plotly.relayout(el, {'scene.camera.eye': {x: r * Math.cos(a), y: r * Math.sin(a), z: e.z}});
+  }
+  requestAnimationFrame(tick);
+}
+
 fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
   DATA = d;
   document.getElementById('updated').textContent = d.updated;
@@ -264,6 +311,7 @@ fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
   ['zmode', 'colorby', 'ci', 'min100', 'shadows'].forEach(id => document.getElementById(id).addEventListener('change', draw));
   draw();
   drawFrontier();
+  startSpin();
 });
 </script>
 </body>
