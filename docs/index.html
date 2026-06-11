@@ -19,7 +19,13 @@
   .controls label { color:var(--muted); margin-right:6px; }
   select { font-size:13px; padding:3px 6px; border:1px solid var(--border); border-radius:5px; background:#fff; color:var(--text); }
   #count { color:var(--muted); margin-left:auto; }
-  #plot { flex:1; min-height:0; overflow:hidden; }
+  main { flex:1; min-height:0; display:flex; }
+  #plot { flex:1; min-width:0; overflow:hidden; }
+  #pane { width:430px; flex-shrink:0; border-left:1px solid var(--border); display:flex; flex-direction:column; }
+  #pane h2 { font-size:13.5px; font-weight:600; margin:10px 14px 0; }
+  #pane .note { font-size:11.5px; color:var(--muted); margin:2px 14px 4px; }
+  #frontier { flex:1; min-height:0; }
+  @media (max-width: 980px) { main { flex-direction:column; } #pane { width:100%; height:340px; border-left:none; border-top:1px solid var(--border); } }
   footer { padding:8px 22px; border-top:1px solid var(--border); font-size:12px; color:var(--muted); }
   footer a { color:var(--accent); text-decoration:none; }
   footer a:hover { text-decoration:underline; }
@@ -44,7 +50,14 @@
     <input type="checkbox" id="ci"></span>
   <span id="count"></span>
 </div>
-<div id="plot"></div>
+<main>
+  <div id="plot"></div>
+  <div id="pane">
+    <h2 id="paneTitle">Frontier: highest ECI over time</h2>
+    <div class="note">Each point is the model that first set a new record (all scored models, no compute filter).</div>
+    <div id="frontier"></div>
+  </div>
+</main>
 <footer>
   Data: <a href="https://epoch.ai/eci" target="_blank" rel="noopener">Epoch AI, Epoch Capabilities Index</a> (CC-BY),
   mirrored from <a href="https://epoch.ai/data/benchmarked_models.csv" target="_blank" rel="noopener">epoch.ai/data</a>.
@@ -180,6 +193,62 @@ function draw() {
     (zmode !== '__eci__' ? `, ≥1 ${zmode} benchmark` : '') + ')';
 }
 
+function drawFrontier() {
+  // always overall ECI: domain means across differing benchmark subsets aren't comparable over time
+  const val = m => m.eci;
+  const pool = DATA.models.filter(m => m.date && val(m) != null)
+    .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : val(b) - val(a));
+  const rec = [];
+  let max = -Infinity;
+  for (const m of pool) {
+    const v = val(m);
+    if (v > max) { max = v; rec.push({m, v}); }
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const line = {
+    type: 'scatter', mode: 'lines', showlegend: false,
+    line: {shape: 'hv', color: '#0d6e6e', width: 2},
+    x: [...rec.map(r => r.m.date), today], y: [...rec.map(r => r.v), max],
+    hoverinfo: 'skip',
+  };
+  // label records that improved noticeably or held >=45 days; rapid-fire ones stay hover-only
+  const labeled = rec.map((r, i) => {
+    if (i === 0 || i === rec.length - 1) return true;
+    const gain = r.v - rec[i - 1].v;
+    const held = (new Date(rec[i + 1].m.date) - new Date(r.m.date)) / 864e5;
+    return gain >= 0.8 || held >= 45;
+  });
+  const t0 = new Date(rec[0].m.date).getTime(), t1 = new Date(today).getTime();
+  const frac = r => (new Date(r.m.date).getTime() - t0) / (t1 - t0);
+  let li = 0;
+  const pts = {
+    type: 'scatter', mode: 'markers+text', showlegend: false, cliponaxis: false,
+    x: rec.map(r => r.m.date), y: rec.map(r => r.v),
+    text: rec.map((r, i) => labeled[i] ? r.m.name : ''),
+    textposition: rec.map((r, i) => {
+      if (i === rec.length - 1) return 'top left';
+      if (frac(r) <= 0.6) return 'bottom right';
+      li += labeled[i] ? 1 : 0;
+      if (frac(r) > 0.8) return li % 2 ? 'top left' : 'top center';
+      return li % 2 ? 'top left' : 'bottom right';
+    }),
+    textfont: {size: 10, color: '#374151'},
+    marker: {size: 7, color: '#0d6e6e'},
+    customdata: rec.map(r =>
+      `<b>${r.m.name}</b><br>${r.m.org} · ${r.m.date}<br>ECI: ${r.v.toFixed(1)}`),
+    hovertemplate: '%{customdata}<extra></extra>',
+  };
+  Plotly.react('frontier', [line, pts], {
+    margin: {l: 45, r: 14, t: 10, b: 34},
+    xaxis: {type: 'date', gridcolor: '#f3f4f6'},
+    yaxis: {title: {text: 'ECI score', font: {size: 12}}, gridcolor: '#f3f4f6',
+            range: [rec[0].v - 4, max + 4]},
+    font: {family: 'inherit', size: 11, color: '#1a1a2e'},
+    hoverlabel: {bgcolor: '#fff', bordercolor: '#d1d5db', font: {size: 12, color: '#1a1a2e'}},
+    paper_bgcolor: '#fff', plot_bgcolor: '#fff',
+  }, {responsive: true, displaylogo: false});
+}
+
 fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
   DATA = d;
   document.getElementById('updated').textContent = d.updated;
@@ -194,6 +263,7 @@ fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
   if (want && d.domains.includes(want)) sel.value = want;
   ['zmode', 'colorby', 'ci', 'min100', 'shadows'].forEach(id => document.getElementById(id).addEventListener('change', draw));
   draw();
+  drawFrontier();
 });
 </script>
 </body>
