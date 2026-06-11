@@ -35,7 +35,7 @@
   <span><label for="zmode">Score (z-axis)</label>
     <select id="zmode"><option value="__eci__">ECI (overall)</option></select></span>
   <span><label for="colorby">Color by</label>
-    <select id="colorby"><option value="org">Organization</option><option value="country">Country</option></select></span>
+    <select id="colorby"><option value="date">Release date</option><option value="org">Organization</option><option value="country">Country</option></select></span>
   <span><label for="min100">ECI &ge; 100 only</label>
     <input type="checkbox" id="min100" checked></span>
   <span><label for="shadows">Shadows</label>
@@ -82,6 +82,56 @@ function draw() {
   if (min100) models = models.filter(m => m.eci >= 100);
   if (zmode !== '__eci__') models = models.filter(m => m.domains[zmode]);
 
+  const hoverText = m => {
+    let s = `<b>${m.name}</b><br>${m.org} · ${m.date}<br>Training compute: ${fmtCompute(m.compute)}` +
+            `<br>ECI: ${m.eci.toFixed(1)}`;
+    if (m.ci[0] != null) s += ` (${m.ci[0].toFixed(1)}–${m.ci[1].toFixed(1)})`;
+    if (zmode !== '__eci__') {
+      const d = m.domains[zmode];
+      s += `<br>${zmode}: ${(d.mean * 100).toFixed(1)}% (mean of ${d.n} benchmark${d.n > 1 ? 's' : ''})`;
+    }
+    return s;
+  };
+  const zOf = m => zmode === '__eci__' ? m.eci : m.domains[zmode].mean * 100;
+  const ciBars = (trace, pts, color) => {
+    trace.error_z = {
+      type: 'data', symmetric: false,
+      array: pts.map(m => m.ci[1] != null ? m.ci[1] - m.eci : 0),
+      arrayminus: pts.map(m => m.ci[0] != null ? m.eci - m.ci[0] : 0),
+      color, thickness: 1.2, width: 0,
+    };
+  };
+
+  const logC = models.map(m => Math.log10(m.compute));
+  const {tv, tt} = log10ticks(logC);
+
+  let traces;
+  if (colorby === 'date') {
+    // continuous time shading: one trace, viridis colorbar with half-year ticks
+    const t = models.map(m => new Date(m.date).getTime());
+    const ctv = [], ctt = [];
+    const d0 = new Date(Math.min(...t)), d1 = new Date(Math.max(...t));
+    for (let y = d0.getUTCFullYear(), h = d0.getUTCMonth() < 6 ? 0 : 1; ; h++) {
+      const ms = Date.UTC(y + Math.floor(h / 2), (h % 2) * 6, 1);
+      if (ms > d1.getTime()) break;
+      ctv.push(ms); ctt.push((h % 2 ? 'Jul ' : 'Jan ') + (y + Math.floor(h / 2)));
+    }
+    const trace = {
+      type: 'scatter3d', mode: 'markers', showlegend: false,
+      x: models.map(m => m.date),
+      y: models.map(m => Math.log10(m.compute)),
+      z: models.map(zOf),
+      text: models.map(hoverText),
+      hovertemplate: '%{text}<extra></extra>',
+      marker: {size: 4.5, opacity: 0.88, color: t, colorscale: 'Viridis',
+               line: {width: 0.5, color: '#ffffff'},
+               colorbar: {title: {text: 'Release', font: {size: 12}}, thickness: 12, len: 0.55,
+                          x: 0.99, tickvals: ctv, ticktext: ctt, tickfont: {size: 11}}},
+    };
+    if (shadows) trace.projection = {z: {show: true, opacity: 0.18, scale: 0.55}};
+    if (showCI) ciBars(trace, models, '#9ca3af');
+    traces = [trace];
+  } else {
   // group for coloring: top groups by count, rest -> Other
   const counts = {};
   models.forEach(m => { const g = m[colorby]; counts[g] = (counts[g] || 0) + 1; });
@@ -90,40 +140,23 @@ function draw() {
   const groups = [...top];
   if (models.some(m => !top.includes(m[colorby]))) groups.push('Other');
 
-  const logC = models.map(m => Math.log10(m.compute));
-  const {tv, tt} = log10ticks(logC);
-
-  const traces = groups.map((g, i) => {
+  traces = groups.map((g, i) => {
     const pts = models.filter(m => groupOf(m) === g);
-    const z = pts.map(m => zmode === '__eci__' ? m.eci : m.domains[zmode].mean * 100);
     const trace = {
       type: 'scatter3d', mode: 'markers', name: `${g} (${pts.length})`,
       x: pts.map(m => m.date),
       y: pts.map(m => Math.log10(m.compute)),
-      z: z,
-      text: pts.map(m => {
-        let s = `<b>${m.name}</b><br>${m.org} · ${m.date}<br>Training compute: ${fmtCompute(m.compute)}` +
-                `<br>ECI: ${m.eci.toFixed(1)}`;
-        if (m.ci[0] != null) s += ` (${m.ci[0].toFixed(1)}–${m.ci[1].toFixed(1)})`;
-        if (zmode !== '__eci__') {
-          const d = m.domains[zmode];
-          s += `<br>${zmode}: ${(d.mean * 100).toFixed(1)}% (mean of ${d.n} benchmark${d.n > 1 ? 's' : ''})`;
-        }
-        return s;
-      }),
+      z: pts.map(zOf),
+      text: pts.map(hoverText),
       hovertemplate: '%{text}<extra></extra>',
       marker: {size: 4.5, color: PALETTE[i % PALETTE.length], opacity: 0.85,
                line: {width: 0.5, color: '#ffffff'}},
     };
     if (shadows) trace.projection = {z: {show: true, opacity: 0.18, scale: 0.55}};
-    if (showCI) trace.error_z = {
-      type: 'data', symmetric: false,
-      array: pts.map(m => m.ci[1] != null ? m.ci[1] - m.eci : 0),
-      arrayminus: pts.map(m => m.ci[0] != null ? m.eci - m.ci[0] : 0),
-      color: PALETTE[i % PALETTE.length], thickness: 1.2, width: 0,
-    };
+    if (showCI) ciBars(trace, pts, PALETTE[i % PALETTE.length]);
     return trace;
   });
+  }
 
   const zTitle = zmode === '__eci__' ? 'ECI score' : zmode + ' (mean %, see footer)';
   Plotly.react('plot', traces, {
