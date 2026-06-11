@@ -3,73 +3,135 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ECI 3D Explorer — capability × training compute × time</title>
+<title>ECI·3D — capability × compute × time</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0e16'/%3E%3Cpath d='M16 5l9 5v10l-9 5-9-5V10z' fill='none' stroke='%232dd4bf' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23a3e635'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
-  :root { --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; --accent:#0d6e6e; }
+  :root {
+    --bg:#0a0e16; --bg2:#0d1320; --panel:#0e1422; --line:#1c2433;
+    --text:#e7ebf3; --muted:#8b95a9; --faint:#5b6478;
+    --accent:#2dd4bf; --accent2:#a3e635;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
   * { box-sizing:border-box; }
-  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-         color:var(--text); background:#fff; display:flex; flex-direction:column; height:100vh; }
+  body { margin:0; font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+         color:var(--text); background:radial-gradient(1200px 700px at 35% 30%, var(--bg2), var(--bg));
+         display:flex; flex-direction:column; height:100vh; }
   header, .controls, footer { flex-shrink:0; }
-  header { padding:14px 22px 8px; border-bottom:1px solid var(--border); }
-  h1 { margin:0 0 2px; font-size:19px; font-weight:650; }
-  .sub { color:var(--muted); font-size:13px; margin:0; }
-  .controls { display:flex; flex-wrap:wrap; gap:18px; align-items:center; padding:10px 22px;
-              border-bottom:1px solid var(--border); font-size:13px; }
-  .controls label { color:var(--muted); margin-right:6px; }
-  select { font-size:13px; padding:3px 6px; border:1px solid var(--border); border-radius:5px; background:#fff; color:var(--text); }
-  #count { color:var(--muted); margin-left:auto; }
+
+  header { display:flex; align-items:center; gap:14px; padding:13px 22px;
+           border-bottom:1px solid var(--line); }
+  .mark { width:30px; height:30px; border-radius:8px; flex-shrink:0;
+          background:linear-gradient(135deg, rgba(45,212,191,.18), rgba(163,230,53,.10));
+          border:1px solid rgba(45,212,191,.45); display:grid; place-items:center; }
+  .mark svg { display:block; }
+  h1 { margin:0; font-size:15.5px; font-weight:650; letter-spacing:.01em; }
+  h1 .dim { color:var(--muted); font-weight:500; }
+  .sub { color:var(--muted); font-size:12px; margin:1px 0 0; }
+  .badges { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .badge { font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:999px;
+           padding:4px 11px; text-decoration:none; white-space:nowrap; }
+  a.badge:hover { color:var(--accent); border-color:rgba(45,212,191,.4); }
+  .badge .dot { display:inline-block; width:6px; height:6px; border-radius:50%;
+                background:var(--accent2); margin-right:6px; vertical-align:1px; }
+
+  .controls { display:flex; flex-wrap:wrap; gap:8px 22px; align-items:center;
+              padding:9px 22px; border-bottom:1px solid var(--line); font-size:12.5px; }
+  .controls label { color:var(--muted); margin-right:7px; }
+  select { font:inherit; font-size:12.5px; padding:4px 8px; border:1px solid var(--line);
+           border-radius:7px; background:var(--panel); color:var(--text); }
+  select:focus { outline:1px solid rgba(45,212,191,.5); }
+  input[type=checkbox] { accent-color:var(--accent); width:14px; height:14px; vertical-align:-2px; }
+  #count { color:var(--faint); margin-left:auto; font-size:11.5px; }
+
+  .stats { display:flex; gap:0; border-bottom:1px solid var(--line); }
+  .stat { flex:1; padding:10px 22px; border-right:1px solid var(--line); min-width:0; }
+  .stat:last-child { border-right:none; }
+  .stat .k { font-size:10px; font-weight:600; letter-spacing:.13em; text-transform:uppercase;
+             color:var(--faint); margin-bottom:3px; }
+  .stat .v { font-family:var(--mono); font-size:16px; font-weight:600; color:var(--text);
+             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stat .v .u { font-size:11px; color:var(--muted); font-weight:400; }
+  .stat .v .hi { color:var(--accent); }
+
   main { flex:1; min-height:0; display:flex; }
   #plot { flex:1; min-width:0; overflow:hidden; }
-  #pane { width:430px; flex-shrink:0; border-left:1px solid var(--border); display:flex; flex-direction:column; }
-  #pane h2 { font-size:13.5px; font-weight:600; margin:10px 14px 0; }
-  #pane .note { font-size:11.5px; color:var(--muted); margin:2px 14px 4px; }
+  #pane { width:430px; flex-shrink:0; border-left:1px solid var(--line);
+          display:flex; flex-direction:column; background:rgba(10,14,22,.45); }
+  #pane h2 { font-size:12.5px; font-weight:600; margin:12px 16px 0; letter-spacing:.02em; }
+  #pane h2::before { content:''; display:inline-block; width:8px; height:8px; border-radius:2px;
+                     background:var(--accent); margin-right:8px; vertical-align:0; }
+  #pane .note { font-size:11px; color:var(--faint); margin:3px 16px 2px; line-height:1.45; }
   #frontier { flex:1; min-height:0; }
-  @media (max-width: 980px) { main { flex-direction:column; } #pane { width:100%; height:340px; border-left:none; border-top:1px solid var(--border); } }
-  footer { padding:8px 22px; border-top:1px solid var(--border); font-size:12px; color:var(--muted); }
-  footer a { color:var(--accent); text-decoration:none; }
-  footer a:hover { text-decoration:underline; }
+  @media (max-width: 980px) {
+    main { flex-direction:column; }
+    #pane { width:100%; height:340px; border-left:none; border-top:1px solid var(--line); }
+    .stats { flex-wrap:wrap; } .stat { min-width:46%; }
+  }
+
+  footer { padding:7px 22px; border-top:1px solid var(--line); font-size:11px; color:var(--faint); }
+  footer a { color:var(--muted); text-decoration:none; }
+  footer a:hover { color:var(--accent); }
 </style>
 </head>
 <body>
 <header>
-  <h1>Epoch Capabilities Index — 3D explorer</h1>
-  <p class="sub">Each point is a model version: release date &times; training compute &times; capability score.
-     Drag to rotate, scroll to zoom, click legend entries to hide groups.</p>
+  <div class="mark">
+    <svg width="18" height="18" viewBox="0 0 32 32"><path d="M16 5l9 5v10l-9 5-9-5V10z" fill="none" stroke="#2dd4bf" stroke-width="2.2"/><circle cx="16" cy="16" r="3" fill="#a3e635"/></svg>
+  </div>
+  <div>
+    <h1>ECI·3D <span class="dim">— Epoch Capabilities Index explorer</span></h1>
+    <p class="sub">Release date × training compute × capability. Drag to rotate · scroll to zoom · hover for details.</p>
+  </div>
+  <div class="badges">
+    <span class="badge"><span class="dot"></span>Data: Epoch AI · refreshed <span id="updated">…</span></span>
+    <a class="badge" href="https://github.com/KonstantinPilz/eci-3d" target="_blank" rel="noopener">Source ↗</a>
+  </div>
 </header>
+
 <div class="controls">
-  <span><label for="zmode">Score (z-axis)</label>
+  <span><label for="zmode">Score</label>
     <select id="zmode"><option value="__eci__">ECI (overall)</option></select></span>
-  <span><label for="colorby">Color by</label>
+  <span><label for="colorby">Color</label>
     <select id="colorby"><option value="date">Release date</option><option value="org">Organization</option><option value="country">Country</option></select></span>
-  <span><label for="min100">ECI &ge; 100 only</label>
-    <input type="checkbox" id="min100" checked></span>
-  <span><label for="shadows">Shadows + stems</label>
-    <input type="checkbox" id="shadows" checked></span>
-  <span><label for="spin">Spin</label>
-    <input type="checkbox" id="spin" checked></span>
-  <span><label for="ci">ECI 90% CI bars</label>
-    <input type="checkbox" id="ci"></span>
+  <span><label for="min100">ECI ≥ 100</label><input type="checkbox" id="min100" checked></span>
+  <span><label for="surface">Trend surface</label><input type="checkbox" id="surface" checked></span>
+  <span><label for="shadows">Shadows + stems</label><input type="checkbox" id="shadows" checked></span>
+  <span><label for="spin">Spin</label><input type="checkbox" id="spin" checked></span>
+  <span><label for="ci">90% CI</label><input type="checkbox" id="ci"></span>
   <span id="count"></span>
 </div>
+
+<div class="stats">
+  <div class="stat"><div class="k">Frontier model</div><div class="v" id="statFrontier">—</div></div>
+  <div class="stat"><div class="k">Frontier ECI</div><div class="v" id="statEci">—</div></div>
+  <div class="stat"><div class="k">Trend · per year</div><div class="v" id="statYr">—</div></div>
+  <div class="stat"><div class="k">Trend · per 10× compute</div><div class="v" id="stat10x">—</div></div>
+</div>
+
 <main>
   <div id="plot"></div>
   <div id="pane">
-    <h2 id="paneTitle">Frontier: highest ECI over time</h2>
-    <div class="note">Each point is the model that first set a new record (all scored models, no compute filter).</div>
+    <h2 id="paneTitle">Frontier — highest ECI over time</h2>
+    <div class="note">Each point is the model that first set a new ECI record (all scored models, no compute filter).</div>
     <div id="frontier"></div>
   </div>
 </main>
+
 <footer>
   Data: <a href="https://epoch.ai/eci" target="_blank" rel="noopener">Epoch AI, Epoch Capabilities Index</a> (CC-BY),
-  mirrored from <a href="https://epoch.ai/data/benchmarked_models.csv" target="_blank" rel="noopener">epoch.ai/data</a>.
-  Domain scores are the unweighted mean across that domain&rsquo;s benchmarks each model was evaluated on &mdash; a rough
-  summary, not Epoch&rsquo;s official domain analysis. Only models with a known training-compute estimate are shown.
-  Last data refresh: <span id="updated">&hellip;</span>. Updated daily.
-  <a href="https://github.com/KonstantinPilz/eci-3d" target="_blank" rel="noopener">Source</a>.
+  mirrored nightly from <a href="https://epoch.ai/data/benchmarked_models.csv" target="_blank" rel="noopener">epoch.ai/data</a>.
+  Domain scores are unweighted means across each model&rsquo;s evaluated benchmarks in that domain &mdash; a rough summary, not Epoch&rsquo;s official analysis.
+  3D view shows models with a known training-compute estimate. Trend lines are partial gradients of a quadratic fit, evaluated at the data centroid.
 </footer>
+
 <script>
-const PALETTE = ['#0d6e6e','#d97706','#7c3aed','#dc2626','#2563eb','#059669','#db2777','#854d0e','#4b5563','#0891b2'];
+const PALETTE = ['#2dd4bf','#f59e0b','#a78bfa','#f87171','#60a5fa','#34d399','#f472b6','#facc15','#94a3b8','#22d3ee'];
+const GRID = '#1d2738', PLANE = 'rgba(13,19,32,0.85)', TICK = '#8b95a9';
+const HOVER = {bgcolor:'#121927', bordercolor:'#2a3650', font:{size:12, color:'#e7ebf3', family:'Inter'}};
 
 let DATA = null;
 
@@ -86,12 +148,41 @@ function fmtCompute(c) {
   return (c / 10 ** e).toFixed(1) + 'e' + e + ' FLOP';
 }
 
+// least-squares quadratic z = a0 + a1 t + a2 y + a3 ty + a4 t^2 + a5 y^2 (gaussian elimination)
+function fitQuadratic(ts, ys, zs) {
+  const n = 6;
+  const A = Array.from({length: n}, () => Array(n + 1).fill(0));
+  for (let k = 0; k < ts.length; k++) {
+    const r = [1, ts[k], ys[k], ts[k] * ys[k], ts[k] * ts[k], ys[k] * ys[k]];
+    for (let i = 0; i < n; i++) {
+      A[i][n] += r[i] * zs[k];
+      for (let j = 0; j < n; j++) A[i][j] += r[i] * r[j];
+    }
+  }
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+    [A[c], A[p]] = [A[p], A[c]];
+    if (Math.abs(A[c][c]) < 1e-12) return null;
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = A[r][c] / A[c][c];
+      for (let j = c; j <= n; j++) A[r][j] -= f * A[c][j];
+    }
+  }
+  return A.map((row, i) => row[n] / A[i][i]);
+}
+const predict = (a, t, y) => a[0] + a[1]*t + a[2]*y + a[3]*t*y + a[4]*t*t + a[5]*y*y;
+
+const yearOf = d => new Date(d).getTime() / 31557600000 + 1970;  // ms -> fractional year
+
 function draw() {
   const zmode = document.getElementById('zmode').value;
   const colorby = document.getElementById('colorby').value;
   const showCI = document.getElementById('ci').checked && zmode === '__eci__';
   const min100 = document.getElementById('min100').checked;
   const shadows = document.getElementById('shadows').checked;
+  const wantSurface = document.getElementById('surface').checked;
 
   let models = DATA.models.filter(m => m.compute);
   if (min100) models = models.filter(m => m.eci >= 100);
@@ -141,42 +232,43 @@ function draw() {
       type: 'scatter3d', mode: 'markers', showlegend: false,
       x: models.map(m => m.date),
       y: models.map(m => Math.log10(m.compute)),
-      z: models.map(zOf),
+      z: zAll,
       text: models.map(hoverText),
       hovertemplate: '%{text}<extra></extra>',
-      marker: {size: 4.5, opacity: 0.88, color: t, colorscale: 'Viridis',
-               line: {width: 0.5, color: '#ffffff'},
-               colorbar: {title: {text: 'Release', font: {size: 12}}, thickness: 12, len: 0.55,
-                          x: 0.99, tickvals: ctv, ticktext: ctt, tickfont: {size: 11}}},
+      marker: {size: 5, opacity: 0.92, color: t, colorscale: 'Viridis',
+               line: {width: 0.5, color: '#0a0e16'},
+               colorbar: {title: {text: 'Release', font: {size: 11, color: TICK}}, thickness: 10, len: 0.5,
+                          x: 0.99, tickvals: ctv, ticktext: ctt, tickfont: {size: 10.5, color: TICK},
+                          outlinewidth: 0}},
     };
-    if (shadows) trace.projection = {z: {show: true, opacity: 0.18, scale: 0.55}};
-    if (showCI) ciBars(trace, models, '#9ca3af');
+    if (shadows) trace.projection = {z: {show: true, opacity: 0.22, scale: 0.5}};
+    if (showCI) ciBars(trace, models, 'rgba(139,149,169,0.6)');
     traces = [trace];
   } else {
-  // group for coloring: top groups by count, rest -> Other
-  const counts = {};
-  models.forEach(m => { const g = m[colorby]; counts[g] = (counts[g] || 0) + 1; });
-  const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, PALETTE.length - 1);
-  const groupOf = m => top.includes(m[colorby]) ? m[colorby] : 'Other';
-  const groups = [...top];
-  if (models.some(m => !top.includes(m[colorby]))) groups.push('Other');
+    // group for coloring: top groups by count, rest -> Other
+    const counts = {};
+    models.forEach(m => { const g = m[colorby]; counts[g] = (counts[g] || 0) + 1; });
+    const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, PALETTE.length - 1);
+    const groupOf = m => top.includes(m[colorby]) ? m[colorby] : 'Other';
+    const groups = [...top];
+    if (models.some(m => !top.includes(m[colorby]))) groups.push('Other');
 
-  traces = groups.map((g, i) => {
-    const pts = models.filter(m => groupOf(m) === g);
-    const trace = {
-      type: 'scatter3d', mode: 'markers', name: `${g} (${pts.length})`,
-      x: pts.map(m => m.date),
-      y: pts.map(m => Math.log10(m.compute)),
-      z: pts.map(zOf),
-      text: pts.map(hoverText),
-      hovertemplate: '%{text}<extra></extra>',
-      marker: {size: 4.5, color: PALETTE[i % PALETTE.length], opacity: 0.85,
-               line: {width: 0.5, color: '#ffffff'}},
-    };
-    if (shadows) trace.projection = {z: {show: true, opacity: 0.18, scale: 0.55}};
-    if (showCI) ciBars(trace, pts, PALETTE[i % PALETTE.length]);
-    return trace;
-  });
+    traces = groups.map((g, i) => {
+      const pts = models.filter(m => groupOf(m) === g);
+      const trace = {
+        type: 'scatter3d', mode: 'markers', name: `${g} (${pts.length})`,
+        x: pts.map(m => m.date),
+        y: pts.map(m => Math.log10(m.compute)),
+        z: pts.map(zOf),
+        text: pts.map(hoverText),
+        hovertemplate: '%{text}<extra></extra>',
+        marker: {size: 5, color: PALETTE[i % PALETTE.length], opacity: 0.9,
+                 line: {width: 0.5, color: '#0a0e16'}},
+      };
+      if (shadows) trace.projection = {z: {show: true, opacity: 0.22, scale: 0.5}};
+      if (showCI) ciBars(trace, pts, PALETTE[i % PALETTE.length]);
+      return trace;
+    });
   }
 
   if (shadows) {
@@ -190,30 +282,75 @@ function draw() {
       error_z: {type: 'data', symmetric: false,
                 array: models.map(() => 0),
                 arrayminus: zAll.map(v => v - zFloor),
-                color: 'rgba(100,116,139,0.5)', thickness: 2, width: 0},
+                color: '#2c3850', thickness: 1.2, width: 0},
     };
     traces.unshift(stems);
   }
 
-  const zTitle = zmode === '__eci__' ? 'ECI score' : zmode + ' (mean %, see footer)';
+  // quadratic trend surface, masked to regions near actual data
+  let fit = null;
+  const ts = models.map(m => yearOf(m.date));
+  if (models.length >= 15) fit = fitQuadratic(ts, logC, zAll);
+  if (fit && wantSurface) {
+    const NT = 40, NY = 30;
+    const t0 = Math.min(...ts), t1 = Math.max(...ts), y0 = Math.min(...logC), y1 = Math.max(...logC);
+    const gx = [], gy = [];
+    for (let j = 0; j < NT; j++) gx.push(t0 + (t1 - t0) * j / (NT - 1));
+    for (let i = 0; i < NY; i++) gy.push(y0 + (y1 - y0) * i / (NY - 1));
+    const gz = gy.map(y => gx.map(t => {
+      const v = predict(fit, t, y);
+      return (v < zFloor || v > zTop) ? null : v;
+    }));
+    traces.unshift({
+      type: 'surface', showscale: false, hoverinfo: 'skip', opacity: 0.16,
+      x: gx.map(t => new Date((t - 1970) * 31557600000).toISOString().slice(0, 10)),
+      y: gy, z: gz,
+      colorscale: [[0, '#2dd4bf'], [1, '#2dd4bf']],
+      contours: {z: {show: true, color: 'rgba(45,212,191,0.35)', width: 1.5,
+                     start: Math.ceil(zFloor / 10) * 10, end: Math.floor(zTop / 10) * 10, size: 10}},
+      lighting: {ambient: 0.9, diffuse: 0.4, specular: 0.05},
+      hidesurface: false,
+    });
+  }
+
+  // stat chips: frontier + local gradients of the fit at the data centroid
+  const tBar = ts.reduce((s, v) => s + v, 0) / ts.length;
+  const yBar = logC.reduce((s, v) => s + v, 0) / logC.length;
+  const unit = zmode === '__eci__' ? 'ECI' : 'pts';
+  if (fit) {
+    const dYr = fit[1] + fit[3] * yBar + 2 * fit[4] * tBar;
+    const d10x = fit[2] + fit[3] * tBar + 2 * fit[5] * yBar;
+    document.getElementById('statYr').innerHTML = `<span class="hi">+${dYr.toFixed(1)}</span> <span class="u">${unit}/yr</span>`;
+    document.getElementById('stat10x').innerHTML = `<span class="hi">+${d10x.toFixed(1)}</span> <span class="u">${unit}</span>`;
+  } else {
+    document.getElementById('statYr').textContent = '—';
+    document.getElementById('stat10x').textContent = '—';
+  }
+
+  const zTitle = zmode === '__eci__' ? 'ECI score' : zmode + ' (mean %)';
+  const axis = (extra) => Object.assign({
+    gridcolor: GRID, zerolinecolor: GRID, showbackground: true, backgroundcolor: PLANE,
+    tickfont: {size: 10.5, color: TICK}, titlefont: {size: 12, color: '#aeb7c9'},
+  }, extra);
   Plotly.react('plot', traces, {
     margin: {l: 0, r: 0, t: 0, b: 0},
     scene: {
-      xaxis: {title: 'Release date', type: 'date', gridcolor: '#e5e7eb'},
-      yaxis: {title: 'Training compute (FLOP)', tickvals: tv, ticktext: tt, gridcolor: '#e5e7eb'},
-      zaxis: {title: zTitle, gridcolor: '#e5e7eb', range: [zFloor, zTop]},
+      xaxis: axis({title: 'Release date', type: 'date'}),
+      yaxis: axis({title: 'Training compute (FLOP)', tickvals: tv, ticktext: tt}),
+      zaxis: axis({title: zTitle, range: [zFloor, zTop]}),
       camera: {eye: {x: 1.8, y: -1.8, z: 0.5}},
       aspectmode: 'cube',
       uirevision: 'keep',
     },
-    legend: {x: 0.99, xanchor: 'right', y: 0.95, font: {size: 12}, itemsizing: 'constant'},
-    hoverlabel: {bgcolor: '#fff', bordercolor: '#d1d5db', font: {size: 12, color: '#1a1a2e'}},
-    paper_bgcolor: '#fff',
+    legend: {x: 0.99, xanchor: 'right', y: 0.95, font: {size: 11.5, color: '#cbd2e0'},
+             bgcolor: 'rgba(10,14,22,0.55)', itemsizing: 'constant'},
+    hoverlabel: HOVER,
+    paper_bgcolor: 'rgba(0,0,0,0)',
   }, {responsive: true, displaylogo: false});
 
   const total = DATA.models.length;
   document.getElementById('count').textContent =
-    `${models.length} of ${total} scored models shown (those with known training compute` +
+    `${models.length} / ${total} scored models (known training compute` +
     (min100 ? ', ECI ≥ 100' : '') +
     (zmode !== '__eci__' ? `, ≥1 ${zmode} benchmark` : '') + ')';
 }
@@ -230,11 +367,15 @@ function drawFrontier() {
     if (v > max) { max = v; rec.push({m, v}); }
   }
   const today = new Date().toISOString().slice(0, 10);
-  const line = {
-    type: 'scatter', mode: 'lines', showlegend: false,
-    line: {shape: 'hv', color: '#0d6e6e', width: 2},
+  const glow = {
+    type: 'scatter', mode: 'lines', showlegend: false, hoverinfo: 'skip',
+    line: {shape: 'hv', color: 'rgba(45,212,191,0.16)', width: 9},
     x: [...rec.map(r => r.m.date), today], y: [...rec.map(r => r.v), max],
-    hoverinfo: 'skip',
+  };
+  const line = {
+    type: 'scatter', mode: 'lines', showlegend: false, hoverinfo: 'skip',
+    line: {shape: 'hv', color: '#2dd4bf', width: 1.8},
+    x: [...rec.map(r => r.m.date), today], y: [...rec.map(r => r.v), max],
   };
   // label records that improved noticeably or held >=45 days; rapid-fire ones stay hover-only
   const labeled = rec.map((r, i) => {
@@ -257,21 +398,26 @@ function drawFrontier() {
       if (frac(r) > 0.8) return li % 2 ? 'top left' : 'top center';
       return li % 2 ? 'top left' : 'bottom right';
     }),
-    textfont: {size: 10, color: '#374151'},
-    marker: {size: 7, color: '#0d6e6e'},
+    textfont: {size: 10, color: '#9fb0c3'},
+    marker: {size: 6.5, color: '#5eead4', line: {width: 1, color: '#0a0e16'}},
     customdata: rec.map(r =>
       `<b>${r.m.name}</b><br>${r.m.org} · ${r.m.date}<br>ECI: ${r.v.toFixed(1)}`),
     hovertemplate: '%{customdata}<extra></extra>',
   };
-  Plotly.react('frontier', [line, pts], {
+  Plotly.react('frontier', [glow, line, pts], {
     margin: {l: 45, r: 14, t: 10, b: 34},
-    xaxis: {type: 'date', gridcolor: '#f3f4f6'},
-    yaxis: {title: {text: 'ECI score', font: {size: 12}}, gridcolor: '#f3f4f6',
-            range: [rec[0].v - 4, max + 4]},
-    font: {family: 'inherit', size: 11, color: '#1a1a2e'},
-    hoverlabel: {bgcolor: '#fff', bordercolor: '#d1d5db', font: {size: 12, color: '#1a1a2e'}},
-    paper_bgcolor: '#fff', plot_bgcolor: '#fff',
+    xaxis: {type: 'date', gridcolor: GRID, tickfont: {color: TICK, size: 10.5}, linecolor: GRID},
+    yaxis: {title: {text: 'ECI score', font: {size: 11.5, color: '#aeb7c9'}}, gridcolor: GRID,
+            tickfont: {color: TICK, size: 10.5}, range: [rec[0].v - 4, max + 4]},
+    font: {family: 'Inter', size: 11, color: '#e7ebf3'},
+    hoverlabel: HOVER,
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
   }, {responsive: true, displaylogo: false});
+
+  const cur = rec[rec.length - 1];
+  document.getElementById('statFrontier').textContent = cur.m.name;
+  document.getElementById('statEci').innerHTML =
+    `<span class="hi">${cur.v.toFixed(1)}</span> <span class="u">since ${cur.m.date}</span>`;
 }
 
 // slow camera orbit for motion parallax; pauses while the cursor is over the plot
@@ -298,7 +444,7 @@ function startSpin() {
 
 fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
   DATA = d;
-  document.getElementById('updated').textContent = d.updated;
+  document.getElementById('updated').textContent = d.updated.slice(0, 10);
   const sel = document.getElementById('zmode');
   d.domains.forEach(dom => {
     const o = document.createElement('option');
@@ -308,7 +454,8 @@ fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
   // match the Epoch link this was built from: preselect via ?subset=Software+engineering
   const want = new URLSearchParams(location.search).get('subset');
   if (want && d.domains.includes(want)) sel.value = want;
-  ['zmode', 'colorby', 'ci', 'min100', 'shadows'].forEach(id => document.getElementById(id).addEventListener('change', draw));
+  ['zmode', 'colorby', 'ci', 'min100', 'shadows', 'surface'].forEach(id =>
+    document.getElementById(id).addEventListener('change', draw));
   draw();
   drawFrontier();
   startSpin();

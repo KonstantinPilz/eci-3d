@@ -5,9 +5,11 @@ Interactive 3D version of [Epoch AI's Capabilities Index graph](https://epoch.ai
 
 **Live site:** https://konstantinpilz.github.io/eci-3d/
 
-- z-axis switchable between overall ECI and domain subsets (e.g. [Software engineering](https://konstantinpilz.github.io/eci-3d/?subset=Software+engineering)). Domain scores are the unweighted mean across that domain's benchmarks each model was evaluated on — a rough summary, not Epoch's official domain analysis.
-- Color by organization or country; optional ECI 90% CI bars; only models with a known training-compute estimate are plotted.
-- `?subset=<domain>` URL parameter preselects a domain.
+- z-axis switchable between overall ECI and domain subsets (e.g. [Software engineering](https://konstantinpilz.github.io/eci-3d/?subset=Software+engineering)); `?subset=<domain>` preselects one. Domain scores are the unweighted mean across that domain's benchmarks each model was evaluated on — a rough summary, not Epoch's official domain analysis.
+- Color by release date (viridis), organization, or country; optional ECI 90% CI bars; only models with a known training-compute estimate are plotted in 3D.
+- Depth cues: slow auto-orbit (pauses on hover), floor shadows + stems, fixed floor plane at the ECI-100 cutoff.
+- Translucent quadratic trend surface fitted to the visible points; stat chips show its partial gradients (ECI per year, ECI per 10x compute) at the data centroid.
+- Frontier pane: step chart of the running-max ECI over release date with labeled record-setters (uses all scored models, no compute filter).
 
 ## Data & auto-update
 
